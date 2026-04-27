@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KomekMap — Цифровой Асар</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        #map { height: 600px; width: 100%; border-radius: 24px; z-index: 1; }
+        .gradient-bg { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); }
+        .filter-btn.active { background-color: #059669; color: white; border-color: #059669; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2); }
+        .active-tab { color: #059669; border-bottom: 3px solid #059669; }
+        .leaflet-control-geocoder { border: none !important; box-shadow: 0 10px 25px rgba(0,0,0,0.1) !important; border-radius: 12px !important; }
+        .leaflet-popup-content-wrapper { border-radius: 18px; padding: 0; overflow: hidden; background: #1e293b; color: white; }
+        .leaflet-popup-content { margin: 0 !important; width: 280px !important; }
+        .popup-img { width: 100%; height: 130px; object-fit: cover; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .popup-container { padding: 15px; }
+        #chat-window { display: none; position: fixed; bottom: 30px; right: 30px; width: 350px; height: 500px; background: white; border-radius: 28px; box-shadow: 0 25px 60px rgba(0,0,0,0.2); z-index: 9999; flex-direction: column; }
+        .msg-user { align-self: flex-end; background: #1e293b; color: white; border-radius: 18px 18px 4px 18px; padding: 10px; max-width: 80%; }
+        .msg-author { align-self: flex-start; background: #ecfdf5; border: 1px solid #d1fae5; border-radius: 18px 18px 18px 4px; color: #064e3b; padding: 10px; max-width: 80%; }
+        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+        .urgent-marker { animation: pulse-red 2s infinite; border: 3px solid #ef4444 !important; border-radius: 50%; }
+        .sos-btn { animation: pulse-red 1.5s infinite; }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen font-sans text-slate-900">
+
+    <nav class="p-6 max-w-7xl mx-auto flex justify-between items-center">
+        <div class="flex items-center gap-2">
+            <div class="bg-emerald-600 p-2 rounded-lg shadow-lg"><i class="fas fa-map-marked-alt text-white text-xl"></i></div>
+            <h1 class="text-2xl font-black tracking-tight">Komek<span class="text-emerald-600">Map</span></h1>
+        </div>
+        <div class="flex gap-4 items-center">
+            <div id="sos-container" class="flex gap-2">
+                <button id="sos-on" onclick="triggerSOS()" class="sos-btn px-6 py-2 bg-red-600 text-white shadow-lg rounded-full text-xs font-black uppercase tracking-tighter">
+                    <i class="fas fa-exclamation-triangle mr-2"></i> SOS
+                </button>
+                <button id="sos-off" onclick="cancelSOS()" class="hidden px-6 py-2 bg-slate-800 text-white shadow-lg rounded-full text-xs font-black uppercase">
+                    ОТБОЙ SOS
+                </button>
+            </div>
+            <div class="flex gap-6 font-bold text-sm mx-4">
+                <button onclick="switchTab('map')" id="tab-map" class="active-tab pb-1 uppercase">Карта</button>
+                <button onclick="switchTab('profile')" id="tab-profile" class="pb-1 text-slate-400 hover:text-emerald-600 uppercase transition-all">Профиль</button>
+            </div>
+            <button onclick="locateMe()" class="px-4 py-2 bg-white hover:bg-slate-50 shadow-sm border border-slate-200 rounded-full text-xs font-bold text-emerald-600">
+                <i class="fas fa-location-arrow"></i>
+            </button>
+        </div>
+    </nav>
+
+    <div id="view-map">
+        <div class="max-w-7xl mx-auto px-4 mb-6 flex flex-wrap gap-3">
+            <button onclick="filterTasks('all', this)" class="filter-btn active px-5 py-2 rounded-full border bg-white text-sm font-bold transition-all">Все</button>
+            <button onclick="filterTasks('general', this)" class="filter-btn px-5 py-2 rounded-full border bg-white text-sm font-bold transition-all">🌍 Асар</button>
+            <button onclick="filterTasks('repair', this)" class="filter-btn px-5 py-2 rounded-full border bg-white text-sm font-bold transition-all">🛠 Ремонт</button>
+            <button onclick="filterTasks('eco', this)" class="filter-btn px-5 py-2 rounded-full border bg-white text-sm font-bold transition-all">🌱 Эко</button>
+            <button onclick="filterTasks('delivery', this)" class="filter-btn px-5 py-2 rounded-full border bg-white text-sm font-bold transition-all">📦 Доставка</button>
+        </div>
+        
+        <main class="max-w-7xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-4 gap-8 pb-12">
+            <div class="lg:col-span-1">
+                <div class="bg-white p-6 rounded-[2rem] shadow-xl border border-white">
+                    <h2 class="text-xl font-bold mb-6 flex items-center gap-2"><i class="fas fa-plus-circle text-emerald-500"></i> Создать</h2>
+                    <div class="space-y-4">
+                        <input id="title" type="text" placeholder="Заголовок" class="w-full p-4 bg-slate-50 rounded-2xl outline-none border-none text-sm">
+                        <select id="category" class="w-full p-4 bg-slate-50 rounded-2xl border-none text-sm">
+                            <option value="general">🌍 Асар (Общее)</option>
+                            <option value="repair">🛠 Ремонт</option>
+                            <option value="eco">🌱 Экология</option>
+                            <option value="delivery">📦 Доставка</option>
+                        </select>
+                        <textarea id="desc" placeholder="Что нужно сделать?" class="w-full p-4 bg-slate-50 rounded-2xl h-24 outline-none border-none resize-none text-sm"></textarea>
+                        <label class="flex items-center gap-2 px-2 cursor-pointer text-[10px] font-bold text-red-500 uppercase tracking-widest">
+                            <input type="checkbox" id="is_urgent" class="w-4 h-4 accent-red-500"> Срочно
+                        </label>
+                        <label class="flex items-center justify-center gap-2 cursor-pointer p-3 bg-slate-50 rounded-2xl text-slate-500 font-bold text-xs border-2 border-dashed border-slate-200">
+                            <i class="fas fa-camera"></i> <span id="file-label">Фото</span>
+                            <input type="file" id="image" class="hidden" accept="image/*" onchange="document.getElementById('file-label').innerText = this.files[0].name">
+                        </label>
+                        <button onclick="sendData()" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold hover:bg-black transition-all shadow-lg">Опубликовать</button>
+                    </div>
+                </div>
+            </div>
+            <div class="lg:col-span-3">
+                <div id="map" class="shadow-2xl border-[12px] border-white"></div>
+            </div>
+        </main>
+    </div>
+
+    <div id="view-profile" class="max-w-6xl mx-auto px-4 hidden py-10">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="lg:col-span-1 space-y-6">
+                <div class="bg-white p-8 rounded-[2.5rem] shadow-xl text-center border border-white">
+                    <div class="w-24 h-24 mx-auto mb-4 bg-emerald-100 rounded-full flex items-center justify-center border-4 border-emerald-50 text-emerald-600 text-4xl"><i class="fas fa-user-astronaut"></i></div>
+                    <h2 class="text-2xl font-black">Нурик Ж.</h2>
+                    <div class="grid grid-cols-2 gap-3 mt-6">
+                        <div class="bg-slate-50 p-3 rounded-2xl"><p class="text-xl font-black text-emerald-600">4.9</p><p class="text-[9px] uppercase font-bold text-slate-400">Рейтинг</p></div>
+                        <div class="bg-slate-50 p-3 rounded-2xl"><p id="helped-val" class="text-xl font-black text-slate-800">12</p><p class="text-[9px] uppercase font-bold text-slate-400">Помог</p></div>
+                    </div>
+                </div>
+                <div class="bg-slate-900 p-6 rounded-[2rem] shadow-xl text-white">
+                    <h3 class="text-[10px] font-bold uppercase text-emerald-400 mb-4 tracking-widest text-center">Топ Героев Города</h3>
+                    <div id="leaderboard" class="space-y-3"></div>
+                </div>
+            </div>
+            
+            <div class="lg:col-span-2 space-y-8">
+                <section><h3 class="text-lg font-black mb-4 flex items-center gap-2"><i class="fas fa-bullhorn text-emerald-600"></i> Мои объявления</h3><div id="my-list" class="space-y-3"></div></section>
+                <section><h3 class="text-lg font-black mb-4 flex items-center gap-2"><i class="fas fa-running text-orange-500"></i> В процессе (Помогаю)</h3><div id="taking-list" class="space-y-3"></div></section>
+                <section><h3 class="text-lg font-black mb-4 flex items-center gap-2"><i class="fas fa-history text-slate-400"></i> История добрых дел</h3><div id="history-list" class="space-y-3"></div></section>
+            </div>
+        </div>
+    </div>
+
+    <div id="chat-window" class="flex overflow-hidden">
+        <div class="bg-emerald-600 p-5 text-white flex justify-between items-center w-full">
+            <p id="chat-header-title" class="font-bold text-sm truncate pr-4">Чат</p>
+            <button onclick="closeChat()" class="text-xl font-bold">&times;</button>
+        </div>
+        <div id="chat-messages" class="flex-1 p-4 overflow-y-auto bg-slate-50 space-y-4 flex flex-col pt-6"></div>
+        <div class="p-4 border-t bg-white flex gap-3">
+            <input id="chat-input" type="text" placeholder="Введите сообщение..." class="flex-1 bg-slate-100 rounded-2xl px-5 py-3 text-sm outline-none">
+            <button onclick="sendMessage()" class="bg-emerald-600 text-white w-12 h-12 rounded-2xl flex items-center justify-center shadow-md"><i class="fas fa-paper-plane"></i></button>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+
+    <script>
+        const API_URL = 'http://127.0.0.1:5000/api/tasks';
+        const IMG_BASE = 'http://127.0.0.1:5000/uploads/';
+        const MY_NAME = "Нурик Ж.";
+        let allTasks = [];
+        let markersLayer = L.layerGroup();
+        let sosLayer = L.layerGroup();
+        let currentFilter = 'all';
+        let tempMarker = null;
+        let activeChatId = null;
+        let localHelpCount = parseInt(localStorage.getItem('myHelpCount')) || 12;
+
+        const catConfig = {
+            general: { color: '#10b981', icon: 'fa-hands-helping' },
+            repair: { color: '#f59e0b', icon: 'fa-tools' },
+            eco: { color: '#22c55e', icon: 'fa-leaf' },
+            delivery: { color: '#3b82f6', icon: 'fa-truck' }
+        };
+
+        const map = L.map('map', { zoomControl: false }).setView([43.238, 76.865], 12);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(map);
+        markersLayer.addTo(map);
+        sosLayer.addTo(map);
+
+        const geocoder = L.Control.geocoder({ defaultMarkGeocode: false, placeholder: "Поиск адреса..." })
+        .on('markgeocode', e => {
+            map.setView(e.geocode.center, 16);
+            if (tempMarker) map.removeLayer(tempMarker);
+            tempMarker = L.marker(e.geocode.center).addTo(map);
+        }).addTo(map);
+
+        map.on('click', e => {
+            if (tempMarker) map.removeLayer(tempMarker);
+            tempMarker = L.marker([e.latlng.lat, e.latlng.lng]).addTo(map);
+        });
+
+        async function loadMarkers() {
+            try {
+                const res = await fetch(API_URL);
+                allTasks = await res.json();
+                renderMarkers(currentFilter);
+                updateProfileUI();
+            } catch (e) { console.error(e); }
+        }
+
+        function renderMarkers(categoryFilter) {
+            markersLayer.clearLayers();
+            allTasks.forEach(task => {
+                if (task.status === 'completed') return; 
+                if (categoryFilter !== 'all' && task.category !== categoryFilter) return;
+
+                const isMyTask = (task.author === MY_NAME);
+                const config = catConfig[task.category] || catConfig.general;
+                const img = task.image ? `<img src="${IMG_BASE + task.image}" class="popup-img">` : '';
+                
+                const div = document.createElement('div');
+                div.innerHTML = `
+                    ${img}
+                    <div class="popup-container">
+                        ${task.is_urgent ? '<div class="text-[8px] bg-red-500 text-white font-bold py-1 px-2 rounded mb-2 inline-block uppercase">Срочно</div>' : ''}
+                        <div class="flex items-center gap-2 mb-3 bg-white/5 p-2 rounded-xl">
+                            <div class="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center text-white font-bold text-[10px]">${task.author[0]}</div>
+                            <div><p class="text-[11px] font-bold leading-none">${task.author}</p><p class="text-[9px] opacity-60">⭐ ${task.rating}</p></div>
+                        </div>
+                        <h3 class="font-bold text-sm mb-1">${task.title}</h3>
+                        <p class="text-[11px] opacity-80 mb-4">${task.description}</p>
+                        <div class="flex gap-2">
+                            ${isMyTask ? 
+                                `<button onclick="deleteTask(${task.id})" class="flex-1 bg-red-500/20 text-red-400 py-2 rounded-lg text-[10px] font-bold">УДАЛИТЬ</button>
+                                 <button onclick="completeTask(${task.id}, false)" class="flex-1 bg-emerald-600 text-white py-2 rounded-lg text-[10px] font-bold uppercase tracking-tighter">Готово</button>` :
+                                `<button onclick="takeTask(${task.id})" class="flex-1 bg-emerald-600 text-white py-2 rounded-lg text-[10px] font-bold uppercase tracking-tighter">Помочь</button>
+                                 <button onclick="openChat(${task.id}, '${task.title}')" class="flex-1 bg-white/10 text-white py-2 rounded-lg text-[10px] font-bold uppercase tracking-tighter">Чат</button>`
+                            }
+                        </div>
+                    </div>
+                `;
+                L.marker([task.lat, task.lng], { 
+                    icon: L.divIcon({
+                        html: `<div style="background-color: ${config.color};" class="w-10 h-10 rounded-full flex items-center justify-center text-white border-2 border-white shadow-lg ${task.is_urgent ? 'urgent-marker' : ''}"><i class="fas ${config.icon}"></i></div>`,
+                        className: 'custom-icon', iconSize: [40, 40]
+                    })
+                }).addTo(markersLayer).bindPopup(div);
+            });
+        }
+
+        async function triggerSOS() {
+            if(confirm("Вы уверены? SOS оповестит всех волонтеров рядом.")) {
+                sosLayer.clearLayers();
+                L.circle(map.getCenter(), {radius: 500, color: '#ef4444', fillOpacity: 0.3}).addTo(sosLayer)
+                  .bindPopup("<b class='text-red-500 uppercase'>Нужна экстренная помощь!</b>").openPopup();
+                document.getElementById('sos-on').classList.add('hidden');
+                document.getElementById('sos-off').classList.remove('hidden');
+            }
+        }
+
+        function cancelSOS() {
+            sosLayer.clearLayers();
+            document.getElementById('sos-on').classList.remove('hidden');
+            document.getElementById('sos-off').classList.add('hidden');
+            alert("Сигнал SOS отменен.");
+        }
+
+        async function takeTask(id) {
+            await fetch(`${API_URL}/${id}/help`, { method: 'POST' });
+            alert("Вы взяли задание! Проверьте профиль.");
+            loadMarkers();
+        }
+
+        async function completeTask(id, isHelping) {
+            await fetch(`${API_URL}/${id}/complete`, { method: 'POST' });
+            if (isHelping) {
+                localHelpCount++;
+                localStorage.setItem('myHelpCount', localHelpCount);
+            }
+            loadMarkers();
+        }
+
+        async function deleteTask(id) {
+            if(confirm("Удалить задание?")) {
+                await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
+                loadMarkers();
+            }
+        }
+
+        function updateProfileUI() {
+            const myC = document.getElementById('my-list');
+            const takC = document.getElementById('taking-list');
+            const hisC = document.getElementById('history-list');
+            
+            const myTasks = allTasks.filter(t => t.author === MY_NAME && t.status !== 'completed');
+            const takingTasks = allTasks.filter(t => t.helper_name === MY_NAME && t.status === 'in_progress');
+            const completedTasks = allTasks.filter(t => (t.author === MY_NAME || t.helper_name === MY_NAME) && t.status === 'completed');
+
+            myC.innerHTML = myTasks.map(t => `
+                <div class="bg-white p-3 rounded-xl border flex justify-between items-center shadow-sm">
+                    <p class="font-bold text-sm text-slate-700">${t.title}</p>
+                    <div class="flex gap-2">
+                        <button onclick="openChat(${t.id},'${t.title}')" class="bg-slate-50 p-2 rounded-lg text-xs"><i class="fas fa-comment text-emerald-600"></i></button>
+                        <button onclick="deleteTask(${t.id})" class="text-red-500 text-[10px] font-black uppercase">Del</button>
+                    </div>
+                </div>
+            `).join('') || '<p class="text-xs italic opacity-50">Вы ничего не создали</p>';
+
+            takC.innerHTML = takingTasks.map(t => `
+                <div class="bg-white p-3 rounded-xl border-l-4 border-orange-500 flex justify-between items-center shadow-md">
+                    <p class="font-bold text-sm text-slate-700">${t.title}</p>
+                    <div class="flex gap-2">
+                        <button onclick="openChat(${t.id},'${t.title}')" class="bg-slate-50 p-2 rounded-lg text-xs"><i class="fas fa-comment"></i></button>
+                        <button onclick="completeTask(${t.id},true)" class="bg-emerald-600 text-white px-3 py-1 rounded-lg text-[10px] font-bold uppercase">Готово</button>
+                    </div>
+                </div>
+            `).join('') || '<p class="text-xs italic opacity-50">Вы пока никому не помогаете</p>';
+
+            hisC.innerHTML = completedTasks.map(t => `
+                <div class="bg-slate-50 p-2 rounded-lg border-dashed border flex justify-between items-center opacity-60">
+                    <p class="text-xs font-medium">${t.title}</p>
+                    <span class="text-[8px] uppercase font-black text-emerald-600">${t.author === MY_NAME ? 'Своё' : 'Вы помогли'}</span>
+                </div>
+            `).join('') || '<p class="text-xs italic opacity-50 text-center">История пуста</p>';
+
+            document.getElementById('helped-val').innerText = localHelpCount;
+            loadLeaderboard();
+        }
+
+        function loadLeaderboard() {
+            const data = [
+                {name: "Нурик Ж. (Вы)", count: localHelpCount, rank: "Мастер", color: "text-emerald-400"},
+                {name: "Айдос К.", count: 42, rank: "Легенда", color: "text-slate-300"},
+                {name: "Марина С.", count: 21, rank: "Герой", color: "text-slate-300"}
+            ].sort((a,b) => b.count - a.count);
+            document.getElementById('leaderboard').innerHTML = data.map((l, i) => `
+                <div class="flex justify-between items-center border-b border-white/5 pb-2">
+                    <div class="flex items-center gap-2">
+                        <span class="text-[10px] font-bold opacity-30">#${i+1}</span>
+                        <div><p class="text-xs font-bold ${l.color}">${l.name}</p><p class="text-[8px] opacity-40 uppercase">${l.rank}</p></div>
+                    </div>
+                    <span class="text-xs font-black">${l.count}</span>
+                </div>
+            `).join('');
+        }
+
+        async function openChat(id, title) {
+            activeChatId = id;
+            document.getElementById('chat-header-title').innerText = title;
+            document.getElementById('chat-window').style.display = 'flex';
+            loadMessages();
+        }
+
+        async function loadMessages() {
+            if(!activeChatId) return;
+            const res = await fetch(`${API_URL}/${activeChatId}/messages`);
+            const msgs = await res.json();
+            document.getElementById('chat-messages').innerHTML = msgs.map(m => `
+                <div class="${m.is_bot ? 'msg-author' : 'msg-user'}">
+                    <p class="text-[12px]">${m.text}</p>
+                    <p class="text-[8px] opacity-40 mt-1">${m.time}</p>
+                </div>
+            `).join('');
+            const c = document.getElementById('chat-messages');
+            c.scrollTop = c.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('chat-input');
+            if(!input.value.trim() || !activeChatId) return;
+            await fetch(`${API_URL}/${activeChatId}/messages`, { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({ text: input.value }) 
+            });
+            input.value = '';
+            loadMessages();
+        }
+
+        async function sendData() {
+            const t = document.getElementById('title').value;
+            const d = document.getElementById('desc').value;
+            if (!tempMarker || !t) return alert("Поставьте метку на карте!");
+            const f = new FormData();
+            f.append('title', t); f.append('description', d); f.append('category', document.getElementById('category').value);
+            f.append('lat', tempMarker.getLatLng().lat); f.append('lng', tempMarker.getLatLng().lng);
+            f.append('is_urgent', document.getElementById('is_urgent').checked);
+            const img = document.getElementById('image').files[0];
+            if(img) f.append('image', img);
+            await fetch(API_URL, { method: 'POST', body: f });
+            location.reload();
+        }
+
+        function filterTasks(cat, element) {
+            currentFilter = cat;
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            if(element) element.classList.add('active');
+            renderMarkers(cat);
+        }
+
+        function switchTab(tab) {
+            document.getElementById('view-map').classList.toggle('hidden', tab !== 'map');
+            document.getElementById('view-profile').classList.toggle('hidden', tab !== 'profile');
+            document.getElementById('tab-map').classList.toggle('active-tab', tab === 'map');
+            document.getElementById('tab-profile').classList.toggle('active-tab', tab === 'profile');
+            if(tab === 'profile') loadLeaderboard();
+        }
+
+        function locateMe() { map.locate({setView: true, maxZoom: 15}); }
+        function closeChat() { document.getElementById('chat-window').style.display = 'none'; activeChatId = null; }
+
+        loadMarkers();
+        setInterval(loadMessages, 4000);
+    </script>
+</body>
+</html>
