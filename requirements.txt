@@ -57,7 +57,7 @@ pyee
 PyGetWindow
 pyinstaller
 pyinstaller-hooks-contrib
-PyMsgBox==
+PyMsgBox
 pyparsing
 pyperclip
 PyQt5
@@ -69,7 +69,7 @@ PyScreeze
 PySocks
 pytesseract
 python-dotenv
-python-pptx=
+python-pptx
 python-telegram-bot
 pythonping
 pytweening
