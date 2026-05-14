@@ -111,7 +111,13 @@ def auto_first_message(task_id):
             new_m = Message(task_id=task_id, text=f"[Помощник]: {first_msg}", is_bot=True)
             db.session.add(new_m); db.session.commit()
             send_tg_notification(f"🤝 Потенциальный помощник написал вам по задаче *{task.title}*:\n_{first_msg}_")
-
+@app.route('/')
+def index():
+    return jsonify({
+        "status": "online",
+        "message": "Система KomekMap активна. Используйте /api/tasks для получения данных.",
+        "author": "Нурик Ж."
+    })
 # --- API ---
 @app.route('/api/tasks', methods=['GET', 'POST'])
 def handle_tasks():
@@ -184,7 +190,10 @@ def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 if __name__ == '__main__':
-    threading.Thread(target=run_bot_polling, daemon=True).start()
-    with app.app_context():
-        db.create_all(); seed_tasks()
-    app.run(host='0.0.0.0', port=5000, debug=False)
+        threading.Thread(target=run_bot_polling, daemon=True).start()
+        with app.app_context():
+            db.create_all()
+            seed_tasks()
+        # Render сам назначит порт через переменную окружения
+        port = int(os.environ.get("PORT", 5000))
+        app.run(host='0.0.0.0', port=port)
