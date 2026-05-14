@@ -60,3 +60,4 @@ Werkzeug
 XlsxWriter
 yarl
 gunicorn
+pyTelegramBotAPI
