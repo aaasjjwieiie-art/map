@@ -37,8 +37,6 @@ PySocks
 pytesseract
 python-dotenv
 python-pptx
-python-telegram-bot
-pythonping
 pytz
 requests
 requests-toolbelt
