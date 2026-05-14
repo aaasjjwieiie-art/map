@@ -8,6 +8,9 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Стили для маршрутов -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
+    
     <style>
         #map { height: 600px; width: 100%; border-radius: 24px; z-index: 1; }
         .gradient-bg { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); }
@@ -53,6 +56,14 @@
     </nav>
 
     <div id="view-map">
+        <!-- Слайдер радиуса -->
+        <div class="max-w-7xl mx-auto px-4 mb-4">
+            <div class="bg-white p-4 rounded-3xl shadow-sm flex items-center gap-6 border border-white">
+                <span class="text-[10px] font-black uppercase text-slate-400 tracking-widest">Радиус: <span id="rad-val" class="text-emerald-600">10</span> км</span>
+                <input type="range" id="radius-range" min="1" max="50" value="10" class="flex-1 accent-emerald-600 cursor-pointer" oninput="updateRadius(this.value)">
+            </div>
+        </div>
+
         <div class="max-w-7xl mx-auto px-4 mb-6 flex flex-wrap gap-3">
             <button onclick="filterTasks('all', this)" class="filter-btn active px-5 py-2 rounded-full border bg-white text-sm font-bold transition-all">Все</button>
             <button onclick="filterTasks('general', this)" class="filter-btn px-5 py-2 rounded-full border bg-white text-sm font-bold transition-all">🌍 Асар</button>
@@ -130,11 +141,14 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+    <!-- Скрипт маршрутизации -->
+    <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.v3.js"></script>
 
     <script>
         const API_URL = 'http://127.0.0.1:5000/api/tasks';
         const IMG_BASE = 'http://127.0.0.1:5000/uploads/';
         const MY_NAME = "Нурик Ж.";
+        
         let allTasks = [];
         let markersLayer = L.layerGroup();
         let sosLayer = L.layerGroup();
@@ -142,6 +156,11 @@
         let tempMarker = null;
         let activeChatId = null;
         let localHelpCount = parseInt(localStorage.getItem('myHelpCount')) || 12;
+
+        // Новые переменные для радиуса и маршрута
+        let userLocation = { lat: 43.238, lng: 76.865 };
+        let currentRadius = 10;
+        let routingControl = null;
 
         const catConfig = {
             general: { color: '#10b981', icon: 'fa-hands-helping' },
@@ -167,9 +186,23 @@
             tempMarker = L.marker([e.latlng.lat, e.latlng.lng]).addTo(map);
         });
 
+        // Отслеживание позиции пользователя
+        map.on('locationfound', e => {
+            userLocation = e.latlng;
+            loadMarkers();
+        });
+
+        function updateRadius(val) {
+            document.getElementById('rad-val').innerText = val;
+            currentRadius = val;
+            loadMarkers();
+        }
+
         async function loadMarkers() {
             try {
-                const res = await fetch(API_URL);
+                // Запрос с фильтрами координат и радиуса
+                const url = `${API_URL}?lat=${userLocation.lat}&lng=${userLocation.lng}&radius=${currentRadius}`;
+                const res = await fetch(url);
                 allTasks = await res.json();
                 renderMarkers(currentFilter);
                 updateProfileUI();
@@ -193,7 +226,10 @@
                         ${task.is_urgent ? '<div class="text-[8px] bg-red-500 text-white font-bold py-1 px-2 rounded mb-2 inline-block uppercase">Срочно</div>' : ''}
                         <div class="flex items-center gap-2 mb-3 bg-white/5 p-2 rounded-xl">
                             <div class="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center text-white font-bold text-[10px]">${task.author[0]}</div>
-                            <div><p class="text-[11px] font-bold leading-none">${task.author}</p><p class="text-[9px] opacity-60">⭐ ${task.rating}</p></div>
+                            <div>
+                                <p class="text-[11px] font-bold leading-none">${task.author}</p>
+                                <p class="text-[9px] opacity-60">⭐ ${task.rating} • ${task.distance} км</p>
+                            </div>
                         </div>
                         <h3 class="font-bold text-sm mb-1">${task.title}</h3>
                         <p class="text-[11px] opacity-80 mb-4">${task.description}</p>
@@ -217,10 +253,19 @@
         }
 
         async function triggerSOS() {
-            if(confirm("Вы уверены? SOS оповестит всех волонтеров рядом.")) {
+            if(confirm("Вы уверены? SOS оповестит всех волонтеров и придет уведомление в Telegram.")) {
                 sosLayer.clearLayers();
-                L.circle(map.getCenter(), {radius: 500, color: '#ef4444', fillOpacity: 0.3}).addTo(sosLayer)
+                const center = map.getCenter();
+                L.circle(center, {radius: 500, color: '#ef4444', fillOpacity: 0.3}).addTo(sosLayer)
                   .bindPopup("<b class='text-red-500 uppercase'>Нужна экстренная помощь!</b>").openPopup();
+                
+                // Уведомление на сервер для Telegram
+                await fetch('http://127.0.0.1:5000/api/sos_alert', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ lat: center.lat, lng: center.lng })
+                });
+
                 document.getElementById('sos-on').classList.add('hidden');
                 document.getElementById('sos-off').classList.remove('hidden');
             }
@@ -234,8 +279,23 @@
         }
 
         async function takeTask(id) {
+            const task = allTasks.find(t => t.id === id);
+            
+            // Рисуем маршрут
+            if (routingControl) map.removeControl(routingControl);
+            routingControl = L.Routing.control({
+                waypoints: [
+                    L.latLng(userLocation.lat, userLocation.lng),
+                    L.latLng(task.lat, task.lng)
+                ],
+                lineOptions: { styles: [{ color: '#10b981', weight: 6 }] },
+                addWaypoints: false,
+                draggableWaypoints: false,
+                createMarker: () => null
+            }).addTo(map);
+
             await fetch(`${API_URL}/${id}/help`, { method: 'POST' });
-            alert("Вы взяли задание! Проверьте профиль.");
+            alert("Вы взяли задание! Маршрут построен. Проверьте профиль.");
             loadMarkers();
         }
 
@@ -244,6 +304,7 @@
             if (isHelping) {
                 localHelpCount++;
                 localStorage.setItem('myHelpCount', localHelpCount);
+                if(routingControl) map.removeControl(routingControl);
             }
             loadMarkers();
         }
