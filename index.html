@@ -8,7 +8,6 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <!-- Стили для маршрутов -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
     
     <style>
@@ -56,7 +55,6 @@
     </nav>
 
     <div id="view-map">
-        <!-- Слайдер радиуса -->
         <div class="max-w-7xl mx-auto px-4 mb-4">
             <div class="bg-white p-4 rounded-3xl shadow-sm flex items-center gap-6 border border-white">
                 <span class="text-[10px] font-black uppercase text-slate-400 tracking-widest">Радиус: <span id="rad-val" class="text-emerald-600">10</span> км</span>
@@ -141,12 +139,13 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
-    <!-- Скрипт маршрутизации -->
     <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.v3.js"></script>
 
     <script>
-        const API_URL = 'http://127.0.0.1:5000/api/tasks';
-        const IMG_BASE = 'http://127.0.0.1:5000/uploads/';
+        // Автоматически определяет текущий адрес хоста (работает и на localhost, и на деплое Render)
+        const BASE_HOST = window.location.origin;
+        const API_URL = `${BASE_HOST}/api/tasks`;
+        const IMG_BASE = `${BASE_HOST}/uploads/`;
         const MY_NAME = "Нурик Ж.";
         
         let allTasks = [];
@@ -157,7 +156,6 @@
         let activeChatId = null;
         let localHelpCount = parseInt(localStorage.getItem('myHelpCount')) || 12;
 
-        // Новые переменные для радиуса и маршрута
         let userLocation = { lat: 43.238, lng: 76.865 };
         let currentRadius = 10;
         let routingControl = null;
@@ -186,7 +184,6 @@
             tempMarker = L.marker([e.latlng.lat, e.latlng.lng]).addTo(map);
         });
 
-        // Отслеживание позиции пользователя
         map.on('locationfound', e => {
             userLocation = e.latlng;
             loadMarkers();
@@ -200,7 +197,6 @@
 
         async function loadMarkers() {
             try {
-                // Запрос с фильтрами координат и радиуса
                 const url = `${API_URL}?lat=${userLocation.lat}&lng=${userLocation.lng}&radius=${currentRadius}`;
                 const res = await fetch(url);
                 allTasks = await res.json();
@@ -228,7 +224,7 @@
                             <div class="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center text-white font-bold text-[10px]">${task.author[0]}</div>
                             <div>
                                 <p class="text-[11px] font-bold leading-none">${task.author}</p>
-                                <p class="text-[9px] opacity-60">⭐ ${task.rating} • ${task.distance} км</p>
+                                <p class="text-[9px] opacity-60">⭐ ${task.rating} • ${task.distance || 0} км</p>
                             </div>
                         </div>
                         <h3 class="font-bold text-sm mb-1">${task.title}</h3>
@@ -259,8 +255,7 @@
                 L.circle(center, {radius: 500, color: '#ef4444', fillOpacity: 0.3}).addTo(sosLayer)
                   .bindPopup("<b class='text-red-500 uppercase'>Нужна экстренная помощь!</b>").openPopup();
                 
-                // Уведомление на сервер для Telegram
-                await fetch('http://127.0.0.1:5000/api/sos_alert', {
+                await fetch(`${BASE_HOST}/api/sos_alert`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ lat: center.lat, lng: center.lng })
@@ -281,7 +276,6 @@
         async function takeTask(id) {
             const task = allTasks.find(t => t.id === id);
             
-            // Рисуем маршрут
             if (routingControl) map.removeControl(routingControl);
             routingControl = L.Routing.control({
                 waypoints: [
@@ -410,12 +404,19 @@
             const t = document.getElementById('title').value;
             const d = document.getElementById('desc').value;
             if (!tempMarker || !t) return alert("Поставьте метку на карте!");
+            
             const f = new FormData();
-            f.append('title', t); f.append('description', d); f.append('category', document.getElementById('category').value);
-            f.append('lat', tempMarker.getLatLng().lat); f.append('lng', tempMarker.getLatLng().lng);
+            f.append('title', t); 
+            f.append('description', d); 
+            f.append('category', document.getElementById('category').value);
+            f.append('lat', tempMarker.getLatLng().lat); 
+            f.append('lng', tempMarker.getLatLng().lng);
             f.append('is_urgent', document.getElementById('is_urgent').checked);
+            
             const img = document.getElementById('image').files[0];
+            // Ключ изменен на 'image' для совместимости с бэкендом request.form.get('image')
             if(img) f.append('image', img);
+            
             await fetch(API_URL, { method: 'POST', body: f });
             location.reload();
         }
