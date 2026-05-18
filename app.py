@@ -57,6 +57,14 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
+@app.route('/')
+def index():
+    return jsonify({
+        "message": "Сервер Flask запущен и успешно работает!",
+        "project": "KomekMap API",
+        "status": "running",
+        "version": "1.0.0"
+    })
 
 class HelpRequest(db.Model):
     id = db.Column(db.Integer, primary_key=True)
