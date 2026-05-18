@@ -183,6 +183,16 @@ def seed_tasks():
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
+# --- ГЛАВНАЯ СТРАНИЦА (УБИРАЕТ ОШИБКУ NOT FOUND) ---
+@app.route('/')
+def index():
+    return {
+        "status": "running",
+        "project": "KomekMap API",
+        "version": "1.0.0",
+        "message": "Сервер Flask запущен и успешно работает!"
+    }, 200
+
 if __name__ == '__main__':
     threading.Thread(target=run_bot_polling, daemon=True).start()
     with app.app_context():
