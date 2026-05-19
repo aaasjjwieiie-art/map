@@ -145,8 +145,8 @@
     <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.v3.js"></script>
 
     <script>
-        const API_URL = 'http://127.0.0.1:5000/api/tasks';
-        const IMG_BASE = 'http://127.0.0.1:5000/uploads/';
+        const API_URL = 'https://map-4jf0.onrender.com/api/tasks';
+        const IMG_BASE = 'https://map-4jf0.onrender.com/uploads/';
         const MY_NAME = "Нурик Ж.";
         
         let allTasks = [];
@@ -274,7 +274,7 @@
                   .bindPopup("<b class='text-red-500 uppercase'>Нужна экстренная помощь!</b>").openPopup();
                 
                 // Уведомление на сервер для Telegram
-                await fetch('http://127.0.0.1:5000/api/sos_alert', {
+                await fetch('https://map-4jf0.onrender.com/api/sos_alert', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ lat: center.lat, lng: center.lng })
