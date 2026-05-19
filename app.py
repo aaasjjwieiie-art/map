@@ -514,16 +514,18 @@ def seed_tasks():
     db.session.commit()
 
 
-# Инициализация БД — выполняется при любом запуске (gunicorn или python)
-with app.app_context():
-    db.create_all()
-    seed_tasks()
-
-# Запуск Telegram бота в фоне — работает и с gunicorn и с python
-threading.Thread(target=run_bot_polling, daemon=True).start()
-
-
 if __name__ == '__main__':
+
+    threading.Thread(
+        target=run_bot_polling,
+        daemon=True
+    ).start()
+
+    with app.app_context():
+
+        db.create_all()
+
+        seed_tasks()
 
     app.run(
       host='0.0.0.0',
