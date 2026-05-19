@@ -6,12 +6,26 @@ import telebot
 
 from flask import Flask, request, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
-from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from datetime import datetime
 
 app = Flask(__name__)
-CORS(app)
+
+# Явный CORS — работает с Netlify и любым фронтендом
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, DELETE, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    return response
+
+@app.route('/api/tasks', methods=['OPTIONS'])
+@app.route('/api/tasks/<path:subpath>', methods=['OPTIONS'])
+@app.route('/api/sos_alert', methods=['OPTIONS'])
+def handle_options(subpath=None):
+    from flask import Response
+    return Response(status=200)
+
 
 TOKEN = "7964218356:AAFIego96byHgIYPqJiKsGis4hnaERBETlQ"
 bot = telebot.TeleBot(TOKEN)
