@@ -2,12 +2,14 @@ import os
 import time
 import threading
 import math
+import random
 import telebot
 
 from flask import Flask, request, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 
 app = Flask(__name__)
@@ -17,7 +19,6 @@ TOKEN = "7964218356:AAFIego96byHgIYPqJiKsGis4hnaERBETlQ"
 bot = telebot.TeleBot(TOKEN)
 
 CHAT_ID_FILE = "chat_id.txt"
-
 
 def load_chat_id():
     if os.path.exists(CHAT_ID_FILE):
@@ -30,7 +31,6 @@ def load_chat_id():
             pass
     return None
 
-
 def save_chat_id(cid):
     try:
         with open(CHAT_ID_FILE, "w") as f:
@@ -38,13 +38,11 @@ def save_chat_id(cid):
     except Exception as e:
         print(f"Ошибка сохранения chat_id: {e}")
 
-
 USER_CONFIG = {
     "chat_id": load_chat_id()
 }
 
 PORT = int(os.environ.get("PORT", 5000))
-
 UPLOAD_FOLDER = 'uploads'
 
 if not os.path.exists(UPLOAD_FOLDER):
@@ -54,17 +52,17 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///komek.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-
 db = SQLAlchemy(app)
 
 @app.route('/')
 def index():
-    return jsonify({
-        "message": "Сервер Flask запущен и успешно работает!",
-        "project": "KomekMap API",
-        "status": "running",
-        "version": "1.0.0"
-    })
+    return send_from_directory('.', 'index.html')
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    full_name = db.Column(db.String(100), nullable=False)
+    telegram = db.Column(db.String(100), unique=True, nullable=False)
+    password_hash = db.Column(db.String(200), nullable=False)
 
 class HelpRequest(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -81,7 +79,6 @@ class HelpRequest(db.Model):
     is_urgent = db.Column(db.Boolean, default=False)
     helper_name = db.Column(db.String(50), nullable=True)
 
-
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     task_id = db.Column(db.Integer, db.ForeignKey('help_request.id'))
@@ -89,45 +86,61 @@ class Message(db.Model):
     is_bot = db.Column(db.Boolean, default=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
-
 def calculate_distance(lat1, lon1, lat2, lon2):
     R = 6371
-
     d_lat = math.radians(lat2 - lat1)
     d_lon = math.radians(lon2 - lon1)
-
-    a = (
-        math.sin(d_lat / 2) ** 2 +
-        math.cos(math.radians(lat1)) *
-        math.cos(math.radians(lat2)) *
-        math.sin(d_lon / 2) ** 2
-    )
-
+    a = (math.sin(d_lat / 2) ** 2 +
+         math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(d_lon / 2) ** 2)
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
     return R * c
-
 
 def send_tg_notification(text):
     if USER_CONFIG["chat_id"]:
         try:
-            bot.send_message(
-                USER_CONFIG["chat_id"],
-                text,
-                parse_mode="Markdown"
-            )
+            bot.send_message(USER_CONFIG["chat_id"], text, parse_mode="Markdown")
         except Exception as e:
             print(f"Ошибка отправки в TG: {e}")
 
-
-ANSWERS = [
-    "Салам! Рахмет, что отозвались.",
-    "Да, помощь ещё нужна.",
-    "Инструменты есть.",
-    "Когда сможете подойти?",
-    "Рахмет!"
+# --- СПИСКИ ДЛЯ СИМУЛЯЦИИ ЖИВОГО ОБЩЕГО ЧАТА ---
+FAKE_USERS = ["Айдос К.", "Марина С.", "Данияр Т.", "Берик А.", "Алия М.", "Султан Б."]
+FAKE_PHRASES = [
+    "Салам всем! Кто может вечером помочь уголь перенести на Гагарина?",
+    "Ребята, рахмет Айдосу, калитку починили за полчаса! Асар в действии 💪",
+    "Всем привет. На выходных планируем субботник в парке, кто с нами?",
+    "Оставила заявку на доставку лекарств для бабушки, если кто мимо аптеки едет — гляньте плиз.",
+    "Ничего себе, классный сайт! Жезказган, алга! 🚀",
+    "Кому нужна помощь с мелким ремонтом или сантехникой? Сегодня свободен до 6 вечера.",
+    "SOS кнопка вообще крутая тема, надеюсь никому не пригодится экстренно, но задумка топ.",
+    "Спасибо создателям KomekMap, реально полезное приложение для города.",
+    "Ребята, там на Алашахана котенка с дерева сняли, отбой по заявке, сами справились))"
 ]
 
+def simulate_global_chat():
+    """Фоновая функция, которая симулирует общение ИИ между собой в чате 999"""
+    time.sleep(10) # Даем серверу запуститься
+    while True:
+        try:
+            with app.app_context():
+                # Выбираем случайного бота и случайную фразу
+                author = random.choice(FAKE_USERS)
+                phrase = random.choice(FAKE_PHRASES)
+                
+                # Записываем в базу как сообщение от бота (is_bot=True, но текст оформлен красиво)
+                new_m = Message(task_id=999, text=f"[{author}]: {phrase}", is_bot=True)
+                db.session.add(new_m)
+                db.session.commit()
+                
+                # Опционально: слать уведомление в телеграм админу, если хочется видеть активность
+                # send_tg_notification(f"💬 [Общий чат] *{author}*:\n{phrase}")
+                
+        except Exception as e:
+            print(f"Ошибка симуляции чата: {e}")
+            
+        # Пауза между сообщениями ботов (от 20 до 40 секунд, чтобы выглядело естественно)
+        time.sleep(random.randint(20, 40))
+
+# --- ЛОГИКА ДЛЯ ДИАЛОГОВ В ОБЫЧНЫХ ЗАЯВКАХ ---
 HELPER_ANSWERS = [
     "Здравствуйте! Готов помочь.",
     "Могу сегодня вечером.",
@@ -135,180 +148,103 @@ HELPER_ANSWERS = [
     "Отлично!"
 ]
 
-
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     USER_CONFIG["chat_id"] = message.chat.id
     save_chat_id(message.chat.id)
-
-    bot.reply_to(
-        message,
-        "✅ KomekMap подключен"
-    )
-
+    bot.reply_to(message, "✅ KomekMap подключен")
 
 @bot.message_handler(commands=['profile'])
 def handle_profile(message):
-
-    with app.app_context():
-
-        my_tasks = HelpRequest.query.filter_by(
-            author="Нурик Ж."
-        ).count()
-
-        helping = HelpRequest.query.filter_by(
-            helper_name="Нурик Ж.",
-            status="in_progress"
-        ).count()
-
-        bot.send_message(
-            message.chat.id,
-            f"👤 Профиль: Нурик Ж.\n📢 Объявлений: {my_tasks}\n🏃 Помогаю: {helping}\n⭐ Рейтинг: 4.9"
-        )
-
+    bot.send_message(message.chat.id, "👤 Ваш Telegram успешно привязан к системе уведомлений KomekMap.")
 
 def run_bot_polling():
     bot.remove_webhook()
     bot.polling(none_stop=True)
 
-
 def ai_reply_logic(task_id):
-
+    if task_id == 999: return # В общем чате эта логика не нужна, там рулит simulate_global_chat
     time.sleep(2)
-
     with app.app_context():
-
         task = HelpRequest.query.get(task_id)
-
-        if not task:
-            return
-
-        user_msg_count = Message.query.filter_by(
-            task_id=task_id,
-            is_bot=False
-        ).count()
-
+        if not task: return
+        user_msg_count = Message.query.filter_by(task_id=task_id, is_bot=False).count()
         index = user_msg_count - 1
-
         reply = ""
-
-        if task.author == "Нурик Ж.":
-
-            if index < len(HELPER_ANSWERS):
-                reply = HELPER_ANSWERS[index]
-
-        else:
-
-            if index < len(ANSWERS):
-                reply = ANSWERS[index]
-
+        if index < len(HELPER_ANSWERS):
+            reply = HELPER_ANSWERS[index]
         if reply:
-
-            new_m = Message(
-                task_id=task_id,
-                text=f"[Бот]: {reply}",
-                is_bot=True
-            )
-
+            new_m = Message(task_id=task_id, text=f"[Помощник]: {reply}", is_bot=True)
             db.session.add(new_m)
             db.session.commit()
-
-            send_tg_notification(
-                f"💬 Ответ собеседника по *«{task.title}»*:\n{reply}"
-            )
-
+            send_tg_notification(f"💬 Ответ собеседника по *«{task.title}»*:\n{reply}")
 
 def auto_first_message(task_id):
-
     time.sleep(3)
-
     with app.app_context():
-
         task = HelpRequest.query.get(task_id)
-
-        if task and task.author == "Нурик Ж.":
-
+        if task:
             first_msg = "Здравствуйте! Готов помочь."
-
-            new_m = Message(
-                task_id=task_id,
-                text=f"[Помощник]: {first_msg}",
-                is_bot=True
-            )
-
+            new_m = Message(task_id=task_id, text=f"[Помощник]: {first_msg}", is_bot=True)
             db.session.add(new_m)
             db.session.commit()
+            send_tg_notification(f"💬 Помощник написал по *«{task.title}»*:\n{first_msg}")
 
-            send_tg_notification(
-                f"💬 Помощник написал по *«{task.title}»*:\n{first_msg}"
-            )
+@app.route('/api/register', methods=['POST'])
+def register():
+    data = request.json
+    name = data.get('full_name')
+    tg = data.get('telegram')
+    pwd = data.get('password')
+    if User.query.filter_by(telegram=tg).first():
+        return jsonify({'error': 'Пользователь с таким Telegram уже существует'}), 400
+    new_user = User(full_name=name, telegram=tg, password_hash=generate_password_hash(pwd))
+    db.session.add(new_user)
+    db.session.commit()
+    return jsonify({'message': 'ok', 'name': name, 'telegram': tg})
 
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.json
+    tg = data.get('telegram')
+    pwd = data.get('password')
+    user = User.query.filter_by(telegram=tg).first()
+    if user and check_password_hash(user.password_hash, pwd):
+        return jsonify({'message': 'ok', 'name': user.full_name, 'telegram': user.telegram})
+    return jsonify({'error': 'Неверный Telegram или пароль'}), 401
 
 @app.route('/api/tasks', methods=['GET', 'POST'])
 def handle_tasks():
-
     if request.method == 'GET':
-
         u_lat = request.args.get('lat', type=float)
         u_lng = request.args.get('lng', type=float)
         radius = request.args.get('radius', type=float)
-
         tasks = HelpRequest.query.all()
-
         result = []
-
         for t in tasks:
-
+            if t.id == 999: continue # Скрываем глобальный чат из маркеров на карте
             dist = None
-
             if u_lat and u_lng:
-                dist = calculate_distance(
-                    u_lat,
-                    u_lng,
-                    t.lat,
-                    t.lng
-                )
-
+                dist = calculate_distance(u_lat, u_lng, t.lat, t.lng)
             if radius and dist and dist > radius:
                 continue
-
             result.append({
-                'id': t.id,
-                'title': t.title,
-                'description': t.description,
-                'lat': t.lat,
-                'lng': t.lng,
-                'category': t.category,
-                'status': t.status,
-                'image': t.image_url,
-                'author': t.author,
-                'rating': t.rating,
-                'is_urgent': t.is_urgent,
-                'helper_name': t.helper_name,
+                'id': t.id, 'title': t.title, 'description': t.description,
+                'lat': t.lat, 'lng': t.lng, 'category': t.category,
+                'status': t.status, 'image': t.image_url, 'author': t.author,
+                'rating': t.rating, 'is_urgent': t.is_urgent, 'helper_name': t.helper_name,
                 'distance': round(dist, 2) if dist else None
             })
-
         return jsonify(result)
 
     image_url = None
-
     if 'image' in request.files:
-
         file = request.files['image']
-
         if file and file.filename:
-
             filename = secure_filename(file.filename)
-
             filename = f"{int(time.time())}_{filename}"
-
-            filepath = os.path.join(
-                app.config['UPLOAD_FOLDER'],
-                filename
-            )
-
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filepath)
-
             image_url = filename
 
     new_task = HelpRequest(
@@ -318,217 +254,102 @@ def handle_tasks():
         lng=float(request.form.get('lng')),
         category=request.form.get('category'),
         is_urgent=request.form.get('is_urgent') == 'true',
-        author='Нурик Ж.',
+        author=request.form.get('author', 'Аноним'),
         rating=4.9,
         image_url=image_url
     )
-
     db.session.add(new_task)
     db.session.commit()
-
-    threading.Thread(
-        target=auto_first_message,
-        args=(new_task.id,)
-    ).start()
-
-    send_tg_notification(
-        f"📢 Новое объявление: {new_task.title}"
-    )
-
+    threading.Thread(target=auto_first_message, args=(new_task.id,)).start()
+    send_tg_notification(f"📢 Новое объявление: {new_task.title}")
     return jsonify({'message': 'created'}), 201
-
 
 @app.route('/api/tasks/<int:id>/help', methods=['POST'])
 def help_task(id):
-
     task = HelpRequest.query.get_or_404(id)
-
-    if task.status == 'in_progress':
-        return jsonify({'message': 'Task already taken'}), 400
-
-    if task.status == 'completed':
-        return jsonify({'message': 'Task completed'}), 400
-
+    if task.status == 'in_progress': return jsonify({'message': 'Task already taken'}), 400
+    if task.status == 'completed': return jsonify({'message': 'Task completed'}), 400
+    data = request.get_json(silent=True) or {}
     task.status = 'in_progress'
-    task.helper_name = 'Нурик Ж.'
-
+    task.helper_name = data.get('helper_name', 'Аноним')
     db.session.commit()
-
-    # Если задание чужое — уведомляем автора что кто-то откликнулся
-    if task.author != 'Нурик Ж.':
-        send_tg_notification(
-            f"🙋 На ваше объявление *«{task.title}»* откликнулся помощник!\n"
-            f"Он уже в пути. Ожидайте помощи."
-        )
-    else:
-        send_tg_notification(
-            f"🤝 Вы помогаете: {task.title}"
-        )
-
+    send_tg_notification(f"🙋 Кто-то откликнулся на задание *«{task.title}»*!")
     return jsonify({'message': 'OK'})
-
 
 @app.route('/api/tasks/<int:id>/complete', methods=['POST'])
 def complete_task(id):
-
     task = HelpRequest.query.get_or_404(id)
-
     task.status = 'completed'
-
     db.session.commit()
-
     return jsonify({'message': 'completed'})
-
 
 @app.route('/api/tasks/<int:id>', methods=['DELETE'])
 def delete_task(id):
-
     task = HelpRequest.query.get_or_404(id)
-
     db.session.delete(task)
-
     db.session.commit()
-
     return jsonify({'message': 'deleted'})
-
 
 @app.route('/api/tasks/<int:task_id>/messages', methods=['GET', 'POST'])
 def handle_messages(task_id):
-
     if request.method == 'GET':
-
-        msgs = Message.query.filter_by(
-            task_id=task_id
-        ).order_by(
-            Message.timestamp.asc()
-        ).all()
-
-        return jsonify([
-            {
-                'text': m.text,
-                'time': m.timestamp.strftime('%H:%M'),
-                'is_bot': m.is_bot
-            }
-            for m in msgs
-        ])
+        msgs = Message.query.filter_by(task_id=task_id).order_by(Message.timestamp.asc()).all()
+        return jsonify([{'text': m.text, 'time': m.timestamp.strftime('%H:%M'), 'is_bot': m.is_bot} for m in msgs])
 
     data = request.json
+    
+    # Если пишет реальный пользователь, оформляем текст просто
+    text_to_save = data['text']
+    # Если это общий чат, подпишем его имя для красоты
+    if task_id == 999:
+        user_name = request.args.get('user_name', 'Вы')
+        text_to_save = f"[{user_name}]: {data['text']}"
 
-    new_msg = Message(
-        task_id=task_id,
-        text=data['text'],
-        is_bot=False
-    )
-
+    new_msg = Message(task_id=task_id, text=text_to_save, is_bot=False)
     db.session.add(new_msg)
     db.session.commit()
-
-    # Уведомление в Telegram при новом сообщении
-    task = HelpRequest.query.get(task_id)
-    if task:
-        send_tg_notification(
-            f"💬 Новое сообщение по объявлению *«{task.title}»*:\n{data['text']}"
-        )
-
-    threading.Thread(
-        target=ai_reply_logic,
-        args=(task_id,)
-    ).start()
-
+    
+    if task_id != 999:
+        task = HelpRequest.query.get(task_id)
+        if task:
+            send_tg_notification(f"💬 Новое сообщение по объявлению *«{task.title}»*:\n{data['text']}")
+        threading.Thread(target=ai_reply_logic, args=(task_id,)).start()
     return jsonify({'status': 'ok'})
-
 
 @app.route('/api/sos_alert', methods=['POST'])
 def sos_alert():
-
     data = request.json
-
-    send_tg_notification(
-        f"🚨 SOS\nШирота: {data['lat']}\nДолгота: {data['lng']}"
-    )
-
+    send_tg_notification(f"🚨 SOS\nШирота: {data['lat']}\nДолгота: {data['lng']}")
     return jsonify({'status': 'ok'})
-
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
-
-    return send_from_directory(
-        app.config['UPLOAD_FOLDER'],
-        filename
-    )
-
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 def seed_tasks():
+    # Создаем комнату для глобального чата
+    global_chat = HelpRequest.query.get(999)
+    if not global_chat:
+        chat_room = HelpRequest(id=999, title="Общий чат взаимопомощи", description="Чат города", lat=0.0, lng=0.0, category="general")
+        db.session.add(chat_room)
+        db.session.commit()
 
-    if HelpRequest.query.count() > 0:
-        return
-
+    if HelpRequest.query.count() > 1: return
     demo_tasks = [
-
-        HelpRequest(
-            title='Помочь починить калитку',
-            description='Пенсионеру нужен шуруповерт.',
-            lat=47.7833,
-            lng=67.7099,
-            category='repair',
-            author='Серик А.',
-            rating=4.8,
-            is_urgent=True
-        ),
-
-        HelpRequest(
-            title='Уборка двора',
-            description='Нужны волонтёры для субботника.',
-            lat=47.7901,
-            lng=67.7150,
-            category='eco',
-            author='Айман К.',
-            rating=4.7
-        ),
-
-        HelpRequest(
-            title='Доставить продукты',
-            description='Бабушка не может выйти из дома.',
-            lat=47.8012,
-            lng=67.7265,
-            category='delivery',
-            author='Галина П.',
-            rating=4.9
-        ),
-
-        HelpRequest(
-            title='Помочь перенести уголь',
-            description='Нужно 2 человека.',
-            lat=47.7950,
-            lng=67.7001,
-            category='general',
-            author='Бауыржан С.',
-            rating=4.6
-        )
-
+        HelpRequest(title='Помочь починить калитку', description='Пенсионеру нужен шуруповерт.', lat=47.7833, lng=67.7099, category='repair', author='Серик А.', rating=4.8, is_urgent=True),
+        HelpRequest(title='Уборка двора', description='Нужны волонтёры для субботника.', lat=47.7901, lng=67.7150, category='eco', author='Айман К.', rating=4.7),
+        HelpRequest(title='Доставить продукты', description='Бабушка не может выйти из дома.', lat=47.8012, lng=67.7265, category='delivery', author='Галина П.', rating=4.9),
+        HelpRequest(title='Помочь перенести уголь', description='Нужно 2 человека.', lat=47.7950, lng=67.7001, category='general', author='Бауыржан С.', rating=4.6)
     ]
-
     db.session.add_all(demo_tasks)
-
     db.session.commit()
 
-
 if __name__ == '__main__':
-
-    threading.Thread(
-        target=run_bot_polling,
-        daemon=True
-    ).start()
-
+    threading.Thread(target=run_bot_polling, daemon=True).start()
+    # ЗАПУСКАЕМ СИМУЛЯЦИЮ ОБЩЕГО ЧАТА В ОТДЕЛЬНОМ ПОТОКЕ
+    threading.Thread(target=simulate_global_chat, daemon=True).start()
+    
     with app.app_context():
-
         db.create_all()
-
         seed_tasks()
-
-    app.run(
-      host='0.0.0.0',
-        port=PORT,
-        debug=False
-    )
+    app.run(host='0.0.0.0', port=PORT, debug=False)
