@@ -15,12 +15,20 @@ from datetime import datetime
 app = Flask(__name__)
 CORS(app)
 
-TOKEN = "7964218356:AAFIego96byHgIYPqJiKsGis4hnaERBETlQ"
+TOKEN = os.environ.get("BOT_TOKEN", "7964218356:AAFIego96byHgIYPqJiKsGis4hnaERBETlQ")
 bot = telebot.TeleBot(TOKEN)
 
 CHAT_ID_FILE = "chat_id.txt"
 
 def load_chat_id():
+    # Сначала пробуем из переменной окружения (для Render.com)
+    env_cid = os.environ.get("TELEGRAM_CHAT_ID")
+    if env_cid:
+        try:
+            return int(env_cid)
+        except Exception:
+            pass
+    # Потом из файла (для локального запуска)
     if os.path.exists(CHAT_ID_FILE):
         try:
             with open(CHAT_ID_FILE, "r") as f:
@@ -32,6 +40,7 @@ def load_chat_id():
     return None
 
 def save_chat_id(cid):
+    USER_CONFIG["chat_id"] = cid
     try:
         with open(CHAT_ID_FILE, "w") as f:
             f.write(str(cid))
@@ -53,6 +62,14 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///komek.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
+
+# --- ЗАПУСК ПРИ СТАРТЕ ЧЕРЕЗ GUNICORN (Render.com) ---
+def startup():
+    with app.app_context():
+        db.create_all()
+        seed_tasks()
+    threading.Thread(target=run_bot_polling, daemon=True).start()
+    threading.Thread(target=simulate_global_chat, daemon=True).start()
 
 @app.route('/')
 def index():
@@ -345,11 +362,9 @@ def seed_tasks():
     db.session.commit()
 
 if __name__ == '__main__':
-    threading.Thread(target=run_bot_polling, daemon=True).start()
-    # ЗАПУСКАЕМ СИМУЛЯЦИЮ ОБЩЕГО ЧАТА В ОТДЕЛЬНОМ ПОТОКЕ
-    threading.Thread(target=simulate_global_chat, daemon=True).start()
-    
-    with app.app_context():
-        db.create_all()
-        seed_tasks()
+    startup()
     app.run(host='0.0.0.0', port=PORT, debug=False)
+
+# Для Gunicorn (Render.com) — запускаем startup один раз при загрузке модуля
+else:
+    startup()
